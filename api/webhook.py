@@ -145,22 +145,26 @@ async def process_one_update(update_data):
     application.add_handler(CommandHandler("weather", weather_command))
     # --------------------------------
 
-    # --- !!! ДОБАВЛЕНА ДИАГНОСТИЧЕСКАЯ СТРОКА ЛОГА !!! ---
     logger.info("process_one_update: Обработчики команд добавлены.")
-    # ------------------------------------------------------
 
     try:
-        # Можно временно изменить уровень лога на DEBUG для большей детализации от библиотеки
-        # logger.setLevel(logging.DEBUG)
         logger.debug(f"process_one_update: Инициализация приложения для update_id {update_data.get('update_id')}")
         await application.initialize()
         update = Update.de_json(update_data, application.bot)
+
+        # --- !!! ЛОГИРУЕМ ВХОДЯЩЕЕ СООБЩЕНИЕ !!! ---
+        if update.message:
+            logger.info(f"process_one_update: Получено сообщение: type={update.message.chat.type}, text='{update.message.text}'")
+        elif update.callback_query:
+             logger.info(f"process_one_update: Получен callback_query: data='{update.callback_query.data}'")
+        else:
+             logger.info(f"process_one_update: Получен другой тип обновления: {update}")
+        # --------------------------------------------
+
         logger.debug(f"process_one_update: Запуск process_update для update_id {update.update_id}")
-        # Именно этот вызов решает, какой обработчик запустить
-        await application.process_update(update)
+        await application.process_update(update) # <-- Здесь происходит магия (или нет)
         logger.debug(f"process_one_update: Завершение shutdown для update_id {update.update_id}")
         await application.shutdown()
-        # logger.setLevel(logging.INFO) # Вернуть уровень обратно, если меняли на DEBUG
     except Exception as e:
         logger.error(f"Критическая ошибка при обработке обновления {update_data.get('update_id', 'N/A')}: {e}", exc_info=True)
         if application.initialized:
