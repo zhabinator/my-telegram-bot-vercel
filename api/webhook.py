@@ -24,21 +24,17 @@ TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 OWM_API_KEY = os.environ.get('OWM_API_KEY') # Ключ для OpenWeatherMap
 # --------------------------------------------
 
-# --- Обработчики команд и сообщений ---
+# --- Обработчики команд ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Ответ на команду /start"""
+    # Обновляем приветствие, убирая упоминание echo
     await update.message.reply_text(
-        'Привет! Я бот. Могу повторить твое сообщение, '
-        'рассказать шутку по команде /joke, '
+        'Привет! Я бот. Могу рассказать шутку по команде /joke, '
         'или показать погоду: /weather Город'
     )
 
-async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Повторяет сообщение пользователя"""
-    # Этот обработчик сработает только если сообщение - текст И НЕ команда
-    user_text = update.message.text
-    await update.message.reply_text(f'Вы написали: {user_text}')
+# --- Функция echo УДАЛЕНА ---
 
 async def joke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отправляет случайную шутку"""
@@ -73,7 +69,7 @@ async def joke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def weather_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отправляет погоду для указанного города"""
-    logger.info("Вызвана команда /weather") # Добавим лог вызова
+    logger.info("Вызвана команда /weather")
 
     if not OWM_API_KEY:
         logger.error("Ключ OWM_API_KEY не найден в переменных окружения.")
@@ -142,12 +138,11 @@ async def process_one_update(update_data):
     application = Application.builder().token(TELEGRAM_TOKEN).build()
 
     # --- РЕГИСТРАЦИЯ ОБРАБОТЧИКОВ ---
-    # Порядок важен: сначала команды, потом общие сообщения
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("joke", joke_command))
-    application.add_handler(CommandHandler("weather", weather_command)) # <-- Проверяем наличие этой строки
-    # Обработчик echo должен идти ПОСЛЕ CommandHandler'ов, чтобы не перехватывать команды
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+    application.add_handler(CommandHandler("weather", weather_command)) # <-- Убеждаемся, что эта строка есть
+    # --- Обработчик echo УДАЛЕН ---
+    # application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
     # --------------------------------
 
     try:
@@ -155,12 +150,8 @@ async def process_one_update(update_data):
         update = Update.de_json(update_data, application.bot)
         await application.process_update(update)
         await application.shutdown()
-        # Убираем лишний лог, так как ошибки логируются внутри process_update
-        # logger.info(f"Успешно обработано обновление {update.update_id}")
     except Exception as e:
-        # Логируем ошибку, если она произошла *вне* process_update (маловероятно)
-        logger.error(f"Критическая ошибка при инициализации/запуске/завершении обработки обновления {update_data.get('update_id', 'N/A')}: {e}", exc_info=True)
-        # Попытка завершить приложение, если оно успело инициализироваться
+        logger.error(f"Критическая ошибка при обработке обновления {update_data.get('update_id', 'N/A')}: {e}", exc_info=True)
         if application.initialized:
             try:
                 await application.shutdown()
