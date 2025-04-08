@@ -9,7 +9,7 @@ import re
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs
 
-# Импорты оставлены, хотя ConversationHandler не используется временно
+# Все необходимые импорты
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 from telegram.ext import (
     Application,
@@ -17,7 +17,7 @@ from telegram.ext import (
     MessageHandler,
     filters,
     ContextTypes,
-    ConversationHandler # Оставлен импорт, но сам хендлер отключен ниже
+    ConversationHandler # Теперь используем
 )
 
 # --- Настройка логирования ---
@@ -30,19 +30,19 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # --- Ключи ---
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
-OWM_API_KEY = os.environ.get('OWM_API_KEY') # Оставляем, вдруг нужен для /weather Город
+OWM_API_KEY = os.environ.get('OWM_API_KEY') # Нужен для погоды
 
 # --- Клавиатура ---
 reply_keyboard = [
-    [KeyboardButton("Шутка 🎲"), KeyboardButton("Погода 🌦️")], # Кнопка Погода осталась, но обработчик диалога отключен
+    [KeyboardButton("Шутка 🎲"), KeyboardButton("Погода 🌦️")],
     [KeyboardButton("О боте ℹ️")]
 ]
 markup = ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
 
-# --- Состояния (ВРЕМЕННО НЕ ИСПОЛЬЗУЮТСЯ) ---
-# GET_CITY = range(1) # Закомментировано, т.к. ConversationHandler отключен
+# --- Состояния для диалога погоды ---
+GET_CITY = range(1) # Раскомментировано
 
-# --- Вспомогательная функция погоды (оставляем, используется /weather Город) ---
+# --- Вспомогательная функция погоды (без изменений) ---
 async def fetch_and_send_weather(update: Update, context: ContextTypes.DEFAULT_TYPE, city_name: str):
     # Отступ 4 пробела
     logger.info(f"fetch_and_send_weather: Запрос погоды для '{city_name}'")
@@ -94,7 +94,7 @@ async def fetch_and_send_weather(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("Ошибка при получении погоды.", reply_markup=markup)
 
 
-# --- Обработчики вне диалога (оставляем) ---
+# --- Обработчики вне диалога (без изменений) ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Отступ 4 пробела
     logger.info("Вызвана /start")
@@ -157,22 +157,29 @@ async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info("Вызвана О боте")
     await update.message.reply_text("Бот для шуток и погоды.", reply_markup=markup)
 
-# --- Функции диалога погоды (ВРЕМЕННО НЕ ИСПОЛЬЗУЮТСЯ) ---
-# async def weather_button_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-#     logger.info("Вход в диалог погоды")
-#     await update.message.reply_text("Введите город:", reply_markup=ReplyKeyboardRemove())
-#     return GET_CITY
-#
-# async def received_city(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-#     city=update.message.text
-#     logger.info(f"Получен город: {city}")
-#     await fetch_and_send_weather(update, context, city)
-#     return ConversationHandler.END
-#
-# async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-#     logger.info("Диалог отменен")
-#     await update.message.reply_text('Отменено.', reply_markup=markup)
-#     return ConversationHandler.END
+# --- Функции диалога погоды (РАСКОММЕНТИРОВАНЫ) ---
+async def weather_button_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    # Отступ 4 пробела
+    logger.info("Вход в диалог погоды через кнопку")
+    await update.message.reply_text("Введите название города, для которого хотите узнать погоду:",
+                                    reply_markup=ReplyKeyboardRemove()) # Убираем основную клавиатуру
+    return GET_CITY # Переходим в состояние ожидания города
+
+async def received_city(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    # Отступ 4 пробела
+    city=update.message.text
+    logger.info(f"Диалог: получен город: {city}")
+    await fetch_and_send_weather(update, context, city) # Вызываем функцию погоды
+    logger.info("Диалог погоды завершен.")
+    # Возвращаем основную клавиатуру после показа погоды
+    # await update.message.reply_text("Что дальше?", reply_markup=markup) # Можно добавить, если нужно
+    return ConversationHandler.END # Завершаем диалог
+
+async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    # Отступ 4 пробела
+    logger.info("Диалог (вероятно, погоды) отменен командой /cancel")
+    await update.message.reply_text('Действие отменено.', reply_markup=markup) # Возвращаем основную клавиатуру
+    return ConversationHandler.END # Завершаем диалог
 
 # --- Обработка обновления ---
 async def process_one_update(update_data):
@@ -184,16 +191,19 @@ async def process_one_update(update_data):
     # Отступ 4 пробела
     application = Application.builder().token(TELEGRAM_TOKEN).build()
 
-    # --- !!! ConversationHandler ВРЕМЕННО ОТКЛЮЧЕН ДЛЯ ДИАГНОСТИКИ !!! ---
-    # logger.debug("Определение ConversationHandler...") # Закомментировано
-    # conv_handler_weather = ConversationHandler( # Закомментировано
-    #     entry_points=[MessageHandler(filters.TEXT & filters.Regex(r'^Погода 🌦️$'), weather_button_entry)], # Закомментировано
-    #     states={GET_CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_city)]}, # Закомментировано
-    #     fallbacks=[CommandHandler('cancel', cancel_conversation)] # Закомментировано
-    # ) # Закомментировано
-    # logger.debug("Добавление ConversationHandler...") # Закомментировано
-    # application.add_handler(conv_handler_weather) # Закомментировано
-    # --- !!! КОНЕЦ ОТКЛЮЧЕНИЯ !!! ---
+    # --- !!! ConversationHandler ВОЗВРАЩЕН !!! ---
+    logger.debug("Определение ConversationHandler для погоды...")
+    conv_handler_weather = ConversationHandler(
+        entry_points=[MessageHandler(filters.TEXT & filters.Regex(r'^Погода 🌦️$'), weather_button_entry)], # Точка входа - кнопка "Погода"
+        states={
+            GET_CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_city)] # Ожидаем текст (город)
+        },
+        fallbacks=[CommandHandler('cancel', cancel_conversation)] # Выход из диалога по /cancel
+    )
+    logger.debug("Добавление ConversationHandler...")
+    # ВАЖНО: Добавляем ConversationHandler ПЕРЕД другими MessageHandler'ами, чтобы он мог перехватить кнопку "Погода"
+    application.add_handler(conv_handler_weather)
+    # --- !!! КОНЕЦ ВОЗВРАЩЕНИЯ ConversationHandler !!! ---
 
     # --- Добавляем остальные обработчики ---
     # Отступ 4 пробела
@@ -202,21 +212,19 @@ async def process_one_update(update_data):
     logger.debug("Добавление CommandHandler(joke)...")
     application.add_handler(CommandHandler("joke", joke_command))
     logger.debug("Добавление CommandHandler(weather)...")
-    application.add_handler(CommandHandler("weather", weather_command_direct))
+    application.add_handler(CommandHandler("weather", weather_command_direct)) # Для прямого вызова /weather Город
     logger.debug("Добавление MessageHandler(Шутка)...")
-    # --- ВАЖНО: Убедитесь, что текст ниже ТОЧНО совпадает с текстом из ЛОГОВ Vercel ---
     application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'^Шутка 🎲$'), joke_command))
     logger.debug("Добавление MessageHandler(О боте)...")
-    # --- ВАЖНО: Убедитесь, что текст ниже ТОЧНО совпадает с текстом из ЛОГОВ Vercel ---
     application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'^О боте ℹ️$'), about_command))
 
-    # --- Обработчик кнопки "Погода" теперь не будет работать, т.к. он вел в отключенный ConversationHandler ---
-    # --- Отдельный /cancel тоже временно не нужен ---
-    # logger.debug("Добавление CommandHandler(cancel)...") # Закомментировано
-    # application.add_handler(CommandHandler('cancel', cancel_conversation)) # Закомментировано
+    # --- Отдельный /cancel для общего пользования (если не внутри диалога) ---
+    # Можно оставить или убрать, если cancel нужен только для диалога
+    # logger.debug("Добавление CommandHandler(cancel) вне диалога...")
+    # application.add_handler(CommandHandler('cancel', cancel_conversation))
 
     # Отступ 4 пробела
-    logger.info("Обработчики добавлены (БЕЗ ConversationHandler).")
+    logger.info("Все обработчики добавлены.")
     try:
         # Отступ 8 пробелов
         logger.debug(f"Инит приложения для {update_data.get('update_id')}")
@@ -247,7 +255,7 @@ async def process_one_update(update_data):
              await application.shutdown()
 
 
-# --- Точка входа Vercel ---
+# --- Точка входа Vercel (без изменений) ---
 class handler(BaseHTTPRequestHandler): # Начало класса, нет отступа
 
     # Отступ 4 пробела перед def log_message
