@@ -15,7 +15,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 # Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=logging.INFO # Установите logging.DEBUG для более подробных логов библиотеки, если нужно
 )
 logger = logging.getLogger(__name__)
 
@@ -140,23 +140,28 @@ async def process_one_update(update_data):
     application = Application.builder().token(TELEGRAM_TOKEN).build()
 
     # --- РЕГИСТРАЦИЯ ОБРАБОТЧИКОВ ---
-    # Убедитесь, что все эти строки присутствуют и не содержат опечаток
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("joke", joke_command))
-    application.add_handler(CommandHandler("weather", weather_command)) # <--- ВАЖНАЯ СТРОКА
-    # Обработчик echo удален, MessageHandler не добавляем
+    application.add_handler(CommandHandler("weather", weather_command))
     # --------------------------------
 
+    # --- !!! ДОБАВЛЕНА ДИАГНОСТИЧЕСКАЯ СТРОКА ЛОГА !!! ---
+    logger.info("process_one_update: Обработчики команд добавлены.")
+    # ------------------------------------------------------
+
     try:
+        # Можно временно изменить уровень лога на DEBUG для большей детализации от библиотеки
+        # logger.setLevel(logging.DEBUG)
         logger.debug(f"process_one_update: Инициализация приложения для update_id {update_data.get('update_id')}")
         await application.initialize()
         update = Update.de_json(update_data, application.bot)
         logger.debug(f"process_one_update: Запуск process_update для update_id {update.update_id}")
+        # Именно этот вызов решает, какой обработчик запустить
         await application.process_update(update)
         logger.debug(f"process_one_update: Завершение shutdown для update_id {update.update_id}")
         await application.shutdown()
+        # logger.setLevel(logging.INFO) # Вернуть уровень обратно, если меняли на DEBUG
     except Exception as e:
-        # Логируем ошибку, если она произошла *вне* вызова конкретного обработчика
         logger.error(f"Критическая ошибка при обработке обновления {update_data.get('update_id', 'N/A')}: {e}", exc_info=True)
         if application.initialized:
             try:
@@ -169,7 +174,6 @@ async def process_one_update(update_data):
 class handler(BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
-          # Используем наш настроенный логгер
           logger.info("%s - %s" % (self.address_string(), format%args))
 
     def do_POST(self):
@@ -191,9 +195,7 @@ class handler(BaseHTTPRequestHandler):
             body_bytes = self.rfile.read(content_len)
             body_json = json.loads(body_bytes.decode('utf-8'))
             logger.info("POST-запрос: JSON получен и декодирован.")
-            # Запускаем обработку одного обновления
             asyncio.run(process_one_update(body_json))
-            # Отвечаем Telegram OK
             self.send_response(200)
             self.send_header('Content-type', 'text/plain')
             self.end_headers()
@@ -215,5 +217,4 @@ class handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
-        # Отправляем байты, закодированные в utf-8
         self.wfile.write(b"Hello! Telegram Bot webhook endpoint is active. Ready for POST requests.")
