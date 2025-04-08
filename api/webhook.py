@@ -27,9 +27,8 @@ TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 
 # --- Создаем клавиатуру ---
 reply_keyboard = [
-    [KeyboardButton("Шутка 🎲")] # Одна кнопка
-    # Можно добавить другие кнопки в этот список или в новые строки
-    # [KeyboardButton("Другая кнопка")]
+    [KeyboardButton("Шутка 🎲"), KeyboardButton("Цитата 📜")], # Добавили кнопку Цитата
+    # Можно добавить другие кнопки сюда
 ]
 # Создаем объект клавиатуры для отправки
 markup = ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
@@ -39,55 +38,84 @@ markup = ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
 # --- Обработчики команд ---
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Ответ на команду /start - теперь отправляет клавиатуру"""
+    """Ответ на команду /start - отправляет клавиатуру"""
     user_name = update.effective_user.first_name or "User"
     logger.info(f"Вызвана /start пользователем {user_name}")
     # Отправляем приветствие и клавиатуру
     await update.message.reply_text(
-        f'Привет, {user_name}! Нажми кнопку, чтобы получить шутку.',
+        f'Привет, {user_name}! Нажми кнопку, чтобы получить шутку или цитату.', # Обновили текст
         reply_markup=markup # Прикрепляем клавиатуру к сообщению
     )
 
 async def joke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отправляет случайную шутку (вызывается командой /joke ИЛИ кнопкой)"""
     # Определяем, как была вызвана функция (для лога)
-    if update.message.text == "/joke":
-        logger.info("Вызвана команда /joke")
-    else:
-        logger.info(f"Нажата кнопка '{update.message.text}'")
+    is_command = update.message.text == "/joke"
+    log_prefix = "/joke" if is_command else f"Кнопка '{update.message.text}'"
+    logger.info(f"{log_prefix}: Запрос шутки...")
 
     joke_api_url = "https://official-joke-api.appspot.com/random_joke"
-    logger.info(f"Запрос шутки с {joke_api_url}")
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(joke_api_url) as response:
                 response.raise_for_status()
                 data = await response.json()
-                logger.info(f"Получен ответ от API шуток: {data}")
+                logger.info(f"{log_prefix}: Получен ответ от API шуток: {data}")
 
         setup = data.get("setup")
         punchline = data.get("punchline")
 
         if setup and punchline:
             joke_text = f"{setup}\n\n{punchline}"
-            # Отправляем шутку И СНОВА клавиатуру
             await update.message.reply_text(joke_text, reply_markup=markup)
         else:
-            logger.error(f"Не удалось извлечь setup/punchline из ответа: {data}")
-            # Отправляем сообщение об ошибке И СНОВА клавиатуру
+            logger.error(f"{log_prefix}: Не удалось извлечь setup/punchline из ответа: {data}")
             await update.message.reply_text("Необычный формат шутки пришел. Попробуй еще раз!", reply_markup=markup)
 
     except aiohttp.ClientError as e:
-        logger.error(f"Ошибка сети при запросе шутки: {e}", exc_info=True)
+        logger.error(f"{log_prefix}: Ошибка сети при запросе шутки: {e}", exc_info=True)
         await update.message.reply_text("Не смог связаться с сервером шуток. Попробуй позже.", reply_markup=markup)
     except json.JSONDecodeError as e:
-         logger.error(f"Ошибка декодирования JSON от API шуток: {e}", exc_info=True)
+         logger.error(f"{log_prefix}: Ошибка декодирования JSON от API шуток: {e}", exc_info=True)
          await update.message.reply_text("Сервер шуток ответил что-то непонятное. Попробуй позже.", reply_markup=markup)
     except Exception as e:
-        logger.error(f"Непредвиденная ошибка при получении шутки: {e}", exc_info=True)
+        logger.error(f"{log_prefix}: Непредвиденная ошибка при получении шутки: {e}", exc_info=True)
         await update.message.reply_text("Ой, что-то пошло не так при поиске шутки. Попробуй позже.", reply_markup=markup)
 
-# --- Функция weather_command УДАЛЕНА ---
+
+# --- НОВАЯ ФУНКЦИЯ ДЛЯ ЦИТАТ ---
+async def quote_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отправляет случайную цитату"""
+    logger.info(f"Нажата кнопка '{update.message.text}'. Запрос цитаты...")
+    quote_api_url = "https://api.quotable.io/random" # API для цитат
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(quote_api_url) as response:
+                response.raise_for_status() # Проверка на ошибки HTTP (4xx, 5xx)
+                data = await response.json()
+                logger.info(f"Цитата: Получен ответ от API цитат: {data}")
+
+        content = data.get("content")
+        author = data.get("author")
+
+        if content and author:
+            # Форматируем цитату
+            quote_text = f'"{content}"\n\n— {author}'
+            await update.message.reply_text(quote_text, reply_markup=markup) # Отправляем с клавиатурой
+        else:
+            logger.error(f"Цитата: Не удалось извлечь content/author из ответа: {data}")
+            await update.message.reply_text("Не смог получить цитату в ожидаемом формате. Попробуй еще раз!", reply_markup=markup)
+
+    except aiohttp.ClientError as e:
+        logger.error(f"Цитата: Ошибка сети при запросе цитаты: {e}", exc_info=True)
+        await update.message.reply_text("Не смог связаться с сервером цитат. Попробуй позже.", reply_markup=markup)
+    except json.JSONDecodeError as e:
+         logger.error(f"Цитата: Ошибка декодирования JSON от API цитат: {e}", exc_info=True)
+         await update.message.reply_text("Сервер цитат ответил что-то непонятное. Попробуй позже.", reply_markup=markup)
+    except Exception as e:
+        logger.error(f"Цитата: Непредвиденная ошибка при получении цитаты: {e}", exc_info=True)
+        await update.message.reply_text("Ой, что-то пошло не так при поиске цитаты. Попробуй позже.", reply_markup=markup)
+# --- КОНЕЦ НОВОЙ ФУНКЦИИ ---
 
 
 # --- Функция обработки ОДНОГО обновления ---
@@ -107,16 +135,20 @@ async def process_one_update(update_data):
     # 2. Обработчик команды /joke (оставляем на всякий случай)
     application.add_handler(CommandHandler("joke", joke_command))
     # 3. Обработчик для НАЖАТИЯ КНОПКИ "Шутка 🎲"
-    # Он реагирует на текстовое сообщение, ТОЧНО совпадающее с текстом кнопки
     application.add_handler(MessageHandler(
         filters.TEXT & filters.Regex(r'^Шутка 🎲$'), # Фильтр по точному тексту кнопки
-        joke_command # Вызываем ту же функцию, что и для /joke
+        joke_command
+    ))
+    # 4. НОВЫЙ Обработчик для НАЖАТИЯ КНОПКИ "Цитата 📜"
+    application.add_handler(MessageHandler(
+        filters.TEXT & filters.Regex(r'^Цитата 📜$'), # Фильтр по точному тексту кнопки
+        quote_command # Вызываем новую функцию
     ))
     # --- Обработчики /weather и echo удалены ---
     # --------------------------------
 
     # Отступ 4 пробела
-    logger.info("Обработчики для start, joke и кнопки 'Шутка' добавлены.")
+    logger.info("Обработчики для start, joke, кнопки 'Шутка', кнопки 'Цитата' добавлены.")
     try:
         # Отступ 8 пробелов
         await application.initialize()
@@ -212,6 +244,6 @@ class handler(BaseHTTPRequestHandler): # Начало класса, нет от�
         self.send_response(200)
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
-        self.wfile.write(b"Hello! Joke Bot (Button activated) webhook endpoint is active.") # Обновил текст
+        self.wfile.write(b"Hello! Joke/Quote Bot webhook endpoint is active.") # Обновил текст
         return
 # Конец класса handler
