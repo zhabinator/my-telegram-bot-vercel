@@ -19,16 +19,13 @@ from telegram.ext import (
     ConversationHandler
 )
 
-# --- !!! Настройка логирования на DEBUG !!! ---
+# --- Настройка логирования на DEBUG ---
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.DEBUG # <-- ВКЛЮЧАЕМ DEBUG
+    level=logging.DEBUG # <-- ОСТАВЛЯЕМ DEBUG ДЛЯ ДИАГНОСТИКИ
 )
-# -----------------------------------------
 logger = logging.getLogger(__name__)
-# Подавляем слишком подробные логи httpx на уровне INFO, если они мешают
-logging.getLogger("httpx").setLevel(logging.WARNING)
-
+logging.getLogger("httpx").setLevel(logging.WARNING) # Подавляем лишние логи httpx
 
 # --- Ключи ---
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
@@ -46,7 +43,6 @@ GET_CITY = range(1)
 
 # --- Вспомогательная функция погоды ---
 async def fetch_and_send_weather(update: Update, context: ContextTypes.DEFAULT_TYPE, city_name: str):
-    # ... (код fetch_and_send_weather без изменений) ...
     logger.info(f"fetch_and_send_weather: Запрос погоды для '{city_name}'")
     if not OWM_API_KEY: logger.error("fetch: Ключ OWM не найден."); await update.message.reply_text("Ключ погоды не настроен.", reply_markup=markup); return
     weather_api_url = f"http://api.openweathermap.org/data/2.5/weather?q={city_name}&appid={OWM_API_KEY}&units=metric&lang=ru"
@@ -62,23 +58,83 @@ async def fetch_and_send_weather(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text(weather_text, reply_markup=markup)
     except Exception as e: logger.error(f"fetch: Ошибка для '{city_name}': {e}", exc_info=True); await update.message.reply_text("Ошибка при получении погоды.", reply_markup=markup)
 
-
 # --- Обработчики вне диалога ---
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE): logger.info("Вызвана /start"); user_name = update.effective_user.first_name or "User"; await update.message.reply_text(f'Привет, {user_name}! Выбери:', reply_markup=markup)
-async def joke_command(update: Update, context: ContextTypes.DEFAULT_TYPE): logger.info("Вызвана /joke или кнопка"); joke_api_url = "https://official-joke-api.appspot.com/random_joke"; try: async with aiohttp.ClientSession() as s, s.get(joke_api_url) as r: r.raise_for_status(); data=await r.json(); setup=data.get("setup"); p=data.get("punchline"); await update.message.reply_text(f"{setup}\n\n{p}" if setup and p else "Шутка не пришла :(", reply_markup=markup) except Exception as e: logger.error(f"/joke Ошибка: {e}"); await update.message.reply_text("Не вышло пошутить.", reply_markup=markup)
-async def weather_command_direct(update: Update, context: ContextTypes.DEFAULT_TYPE): logger.info("Вызвана /weather Город"); city=" ".join(context.args) if context.args else None; await fetch_and_send_weather(update, context, city) if city else await update.message.reply_text("Укажите город: /weather Город", reply_markup=markup)
-async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE): logger.info("Вызвана О боте"); await update.message.reply_text("Штатный скоморох Талана", reply_markup=markup)
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info("Вызвана /start")
+    user_name = update.effective_user.first_name or "User"
+    await update.message.reply_text(f'Привет, {user_name}! Выбери:', reply_markup=markup)
+
+# --- !!! ИСПРАВЛЕННАЯ ФУНКЦИЯ joke_command !!! ---
+async def joke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отправляет случайную шутку"""
+    joke_api_url = "https://official-joke-api.appspot.com/random_joke"
+    logger.info(f"Вызвана /joke или кнопка 'Шутка'. Запрос шутки с {joke_api_url}")
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(joke_api_url) as response:
+                response.raise_for_status()
+                data = await response.json()
+                logger.info(f"/joke: Получен ответ от API шуток: {data}")
+
+        setup = data.get("setup")
+        punchline = data.get("punchline")
+
+        if setup and punchline:
+            joke_text = f"{setup}\n\n{punchline}"
+            await update.message.reply_text(joke_text, reply_markup=markup)
+        else:
+            logger.error(f"/joke: Не удалось извлечь setup/punchline из ответа: {data}")
+            await update.message.reply_text("Необычный формат шутки пришел. Попробуй еще раз!", reply_markup=markup)
+
+    except aiohttp.ClientError as e:
+        logger.error(f"/joke: Ошибка сети при запросе шутки: {e}", exc_info=True)
+        await update.message.reply_text("Не смог связаться с сервером шуток. Попробуй позже.", reply_markup=markup)
+    except json.JSONDecodeError as e:
+         logger.error(f"/joke: Ошибка декодирования JSON от API шуток: {e}", exc_info=True)
+         await update.message.reply_text("Сервер шуток ответил что-то непонятное. Попробуй позже.", reply_markup=markup)
+    except Exception as e:
+        logger.error(f"/joke: Непредвиденная ошибка при получении шутки: {e}", exc_info=True)
+        await update.message.reply_text("Ой, что-то пошло не так при поиске шутки. Попробуй позже.", reply_markup=markup)
+# --- КОНЕЦ ИСПРАВЛЕННОЙ ФУНКЦИИ ---
+
+async def weather_command_direct(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info("Вызвана /weather Город")
+    city = " ".join(context.args) if context.args else None
+    if city:
+        await fetch_and_send_weather(update, context, city)
+    else:
+        await update.message.reply_text("Укажите город: /weather Город", reply_markup=markup)
+
+async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+     logger.info("Вызвана О боте")
+     await update.message.reply_text("Бот для шуток и погоды.", reply_markup=markup)
 
 # --- Функции диалога погоды ---
-async def weather_button_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int: logger.info("Вход в диалог погоды"); await update.message.reply_text("Введите город:", reply_markup=ReplyKeyboardRemove()); return GET_CITY
-async def received_city(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int: city=update.message.text; logger.info(f"Получен город: {city}"); await fetch_and_send_weather(update, context, city); return ConversationHandler.END
-async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int: logger.info("Диалог отменен"); await update.message.reply_text('Отменено.', reply_markup=markup); return ConversationHandler.END
+async def weather_button_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    logger.info("Вход в диалог погоды")
+    await update.message.reply_text("Введите город:", reply_markup=ReplyKeyboardRemove())
+    return GET_CITY
+
+async def received_city(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    city=update.message.text
+    logger.info(f"Получен город: {city}")
+    await fetch_and_send_weather(update, context, city)
+    return ConversationHandler.END
+
+async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    logger.info("Диалог отменен")
+    await update.message.reply_text('Отменено.', reply_markup=markup)
+    return ConversationHandler.END
 
 # --- Обработка обновления ---
 async def process_one_update(update_data):
     if not TELEGRAM_TOKEN: logger.error("Токен не найден!"); return
     application = Application.builder().token(TELEGRAM_TOKEN).build()
-    conv_handler_weather = ConversationHandler(entry_points=[MessageHandler(filters.TEXT & filters.Regex(r'^Погода 🌦️$'), weather_button_entry)], states={GET_CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_city)]}, fallbacks=[CommandHandler('cancel', cancel_conversation)])
+    conv_handler_weather = ConversationHandler(
+        entry_points=[MessageHandler(filters.TEXT & filters.Regex(r'^Погода 🌦️$'), weather_button_entry)],
+        states={GET_CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_city)]},
+        fallbacks=[CommandHandler('cancel', cancel_conversation)]
+    )
     application.add_handler(conv_handler_weather)
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("joke", joke_command))
@@ -91,6 +147,10 @@ async def process_one_update(update_data):
         logger.debug(f"Инит приложения для {update_data.get('update_id')}")
         await application.initialize()
         update = Update.de_json(update_data, application.bot)
+        # Логгируем входящее сообщение
+        if update.message: logger.info(f"Получено сообщение: type={update.message.chat.type}, text='{update.message.text}'")
+        elif update.callback_query: logger.info(f"Получен callback_query: data='{update.callback_query.data}'")
+        else: logger.info(f"Получен другой тип обновления: {update}")
         logger.debug(f"Запуск process_update для {update.update_id}")
         await application.process_update(update) # <- Основная обработка
         logger.debug(f"Завершение shutdown для {update.update_id}")
