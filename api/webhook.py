@@ -4,18 +4,19 @@ import asyncio
 import json
 import logging
 import aiohttp # Для асинхронных HTTP-запросов
+import re # <-- Добавляем импорт для Regex
 
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs
 
 # Убедитесь, что эти строки импорта есть и правильные
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes # filters теперь точно нужен
 
 # Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO # Установите logging.DEBUG для более подробных логов библиотеки, если нужно
+    level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def joke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отправляет случайную шутку"""
+    # ... (код функции joke_command без изменений) ...
     joke_api_url = "https://official-joke-api.appspot.com/random_joke"
     logger.info(f"Вызвана /joke. Запрос шутки с {joke_api_url}")
     try:
@@ -43,17 +45,14 @@ async def joke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 response.raise_for_status()
                 data = await response.json()
                 logger.info(f"/joke: Получен ответ от API шуток: {data}")
-
         setup = data.get("setup")
         punchline = data.get("punchline")
-
         if setup and punchline:
             joke_text = f"{setup}\n\n{punchline}"
             await update.message.reply_text(joke_text)
         else:
             logger.error(f"/joke: Не удалось извлечь setup/punchline из ответа: {data}")
             await update.message.reply_text("Необычный формат шутки пришел. Попробуй еще раз!")
-
     except aiohttp.ClientError as e:
         logger.error(f"/joke: Ошибка сети при запросе шутки: {e}", exc_info=True)
         await update.message.reply_text("Не смог связаться с сервером шуток. Попробуй позже.")
@@ -64,25 +63,40 @@ async def joke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"/joke: Непредвиденная ошибка при получении шутки: {e}", exc_info=True)
         await update.message.reply_text("Ой, что-то пошло не так при поиске шутки. Попробуй позже.")
 
+
 async def weather_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отправляет погоду для указанного города"""
-    logger.info("Вызвана команда /weather") # Лог вызова команды
+    # --- !!! ВАЖНО: Извлекаем аргументы ИЗ ТЕКСТА СООБЩЕНИЯ, т.к. используем MessageHandler !!! ---
+    logger.info("Вызвана команда /weather (через MessageHandler)")
+    
+    # Удаляем саму команду /weather из текста сообщения, чтобы получить аргументы
+    command_text = "/weather"
+    if update.message.text.startswith(command_text):
+        args_text = update.message.text[len(command_text):].strip()
+        # Разделяем аргументы по пробелам, если они есть
+        args_list = args_text.split() if args_text else []
+    else:
+        # На всякий случай, если фильтр сработал неточно
+        args_list = []
+        logger.warning("/weather: Фильтр сработал, но текст не начинается с /weather?")
 
     if not OWM_API_KEY:
-        logger.error("/weather: Ключ OWM_API_KEY не найден в переменных окружения.")
-        await update.message.reply_text("Ключ для сервиса погоды не настроен на сервере.")
+        logger.error("/weather: Ключ OWM_API_KEY не найден.")
+        await update.message.reply_text("Ключ для сервиса погоды не настроен.")
         return
 
-    if not context.args:
-        logger.info("/weather: Команда вызвана без аргументов.")
+    if not args_list: # Проверяем список аргументов
+        logger.info("/weather: Аргументы не найдены в тексте.")
         await update.message.reply_text("Пожалуйста, укажите город после команды: /weather НазваниеГорода")
         return
-    city_name = " ".join(context.args)
+    city_name = " ".join(args_list) # Объединяем обратно, если город из нескольких слов
+    # --- КОНЕЦ ИЗМЕНЕНИЙ В ИЗВЛЕЧЕНИИ АРГУМЕНТОВ ---
 
     weather_api_url = f"http://api.openweathermap.org/data/2.5/weather?q={city_name}&appid={OWM_API_KEY}&units=metric&lang=ru"
     logger.info(f"/weather: Запрос погоды для '{city_name}' с {weather_api_url}")
 
     try:
+        # ... (остальной код запроса погоды и отправки ответа без изменений) ...
         async with aiohttp.ClientSession() as session:
             async with session.get(weather_api_url) as response:
                 if response.status == 401:
@@ -93,12 +107,9 @@ async def weather_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     logger.warning(f"/weather: Город '{city_name}' не найден OWM API (404).")
                     await update.message.reply_text(f"Не могу найти город '{city_name}'. Убедитесь в правильности написания.")
                     return
-                response.raise_for_status() # Проверка на другие ошибки (5xx, 4xx)
-
+                response.raise_for_status()
                 data = await response.json()
                 logger.info(f"/weather: Получен ответ от OWM API: {data}")
-
-        # Извлечение данных (с проверками на случай отсутствия полей)
         weather_list = data.get("weather", [])
         main_weather = weather_list[0].get("description", "Нет данных") if weather_list else "Нет данных"
         main_data = data.get("main", {})
@@ -108,8 +119,6 @@ async def weather_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         wind_data = data.get("wind", {})
         wind_speed = wind_data.get("speed", "N/A")
         city_display_name = data.get("name", city_name)
-
-        # Формирование текста ответа
         weather_text = (
             f"Погода в городе {city_display_name}:\n"
             f"Описание: {main_weather.capitalize()}\n"
@@ -119,7 +128,6 @@ async def weather_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Скорость ветра: {wind_speed} м/с"
         )
         await update.message.reply_text(weather_text)
-
     except aiohttp.ClientError as e:
         logger.error(f"/weather: Ошибка сети при запросе погоды для '{city_name}': {e}", exc_info=True)
         await update.message.reply_text("Не смог связаться с сервером погоды. Попробуй позже.")
@@ -134,7 +142,7 @@ async def weather_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- Функция обработки ОДНОГО обновления ---
 async def process_one_update(update_data):
     if not TELEGRAM_TOKEN:
-        logger.error("process_one_update: Токен не найден в переменных окружения!")
+        logger.error("process_one_update: Токен не найден!")
         return
 
     application = Application.builder().token(TELEGRAM_TOKEN).build()
@@ -142,27 +150,31 @@ async def process_one_update(update_data):
     # --- РЕГИСТРАЦИЯ ОБРАБОТЧИКОВ ---
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("joke", joke_command))
-    application.add_handler(CommandHandler("weather", weather_command))
-    # --------------------------------
+    # --- Используем MessageHandler для /weather ---
+    # Он сработает на любое сообщение, которое является командой И начинается с /weather
+    application.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r'^/weather'), weather_command))
+    # --------------------------------------------
 
-    logger.info("process_one_update: Обработчики команд добавлены.")
+    logger.info("process_one_update: Обработчики команд добавлены (weather через MessageHandler).")
 
     try:
         logger.debug(f"process_one_update: Инициализация приложения для update_id {update_data.get('update_id')}")
         await application.initialize()
         update = Update.de_json(update_data, application.bot)
 
-        # --- !!! ЛОГИРУЕМ ВХОДЯЩЕЕ СООБЩЕНИЕ !!! ---
+        # Логируем входящее сообщение
         if update.message:
             logger.info(f"process_one_update: Получено сообщение: type={update.message.chat.type}, text='{update.message.text}'")
         elif update.callback_query:
              logger.info(f"process_one_update: Получен callback_query: data='{update.callback_query.data}'")
         else:
              logger.info(f"process_one_update: Получен другой тип обновления: {update}")
-        # --------------------------------------------
 
-        logger.debug(f"process_one_update: Запуск process_update для update_id {update.update_id}")
-        await application.process_update(update) # <-- Здесь происходит магия (или нет)
+        # Логируем до и после вызова process_update
+        logger.info(f"process_one_update: Запуск application.process_update для update_id {update.update_id}")
+        await application.process_update(update)
+        logger.info(f"process_one_update: ЗАВЕРШЕН application.process_update для update_id {update.update_id}")
+
         logger.debug(f"process_one_update: Завершение shutdown для update_id {update.update_id}")
         await application.shutdown()
     except Exception as e:
@@ -176,10 +188,9 @@ async def process_one_update(update_data):
 
 # --- Точка входа для Vercel (остается без изменений) ---
 class handler(BaseHTTPRequestHandler):
-
+    # ... (log_message, do_POST, do_GET без изменений) ...
     def log_message(self, format, *args):
           logger.info("%s - %s" % (self.address_string(), format%args))
-
     def do_POST(self):
         logger.info("!!! Вход в do_POST !!!")
         if not TELEGRAM_TOKEN:
@@ -215,7 +226,6 @@ class handler(BaseHTTPRequestHandler):
             self.send_response(500)
             self.end_headers()
             self.wfile.write(b"Internal Server Error occurred")
-
     def do_GET(self):
         logger.info("Обработан GET-запрос к /api/webhook")
         self.send_response(200)
