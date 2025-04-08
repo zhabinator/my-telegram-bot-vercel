@@ -9,14 +9,14 @@ import re
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs
 
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton # Убрали ReplyKeyboardRemove
 from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
     filters,
-    ContextTypes,
-    ConversationHandler
+    ContextTypes
+    # Убрали ConversationHandler
 )
 
 # Настройка логирования (оставляем DEBUG)
@@ -31,15 +31,11 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 OWM_API_KEY = os.environ.get('OWM_API_KEY')
 
-# --- Клавиатура ---
+# --- Клавиатура (без кнопки Погода) ---
 reply_keyboard = [
-    [KeyboardButton("Шутка 🎲"), KeyboardButton("Погода 🌦️")],
-    [KeyboardButton("О боте ℹ️")]
+    [KeyboardButton("Шутка 🎲"), KeyboardButton("О боте ℹ️")]
 ]
 markup = ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
-
-# --- Состояния ---
-GET_CITY = range(1)
 
 # --- Вспомогательная функция погоды ---
 async def fetch_and_send_weather(update: Update, context: ContextTypes.DEFAULT_TYPE, city_name: str):
@@ -60,73 +56,27 @@ async def fetch_and_send_weather(update: Update, context: ContextTypes.DEFAULT_T
     except Exception as e: logger.error(f"fetch: Ошибка для '{city_name}': {e}", exc_info=True); await update.message.reply_text("Ошибка при получении погоды.", reply_markup=markup)
 
 
-# --- Обработчики вне диалога ---
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE): logger.info("Вызвана /start"); user_name = update.effective_user.first_name or "User"; await update.message.reply_text(f'Привет, {user_name}! Выбери:', reply_markup=markup)
-async def joke_command(update: Update, context: ContextTypes.DEFAULT_TYPE): logger.info("Вызвана /joke или кнопка 'Шутка'"); joke_api_url = "https://official-joke-api.appspot.com/random_joke"; try: async with aiohttp.ClientSession() as s, s.get(joke_api_url) as r: r.raise_for_status(); data=await r.json(); logger.info(f"/joke: Ответ API: {data}"); setup=data.get("setup"); p=data.get("punchline"); await update.message.reply_text(f"{setup}\n\n{p}" if setup and p else "Шутка не пришла :(", reply_markup=markup) except Exception as e: logger.error(f"/joke Ошибка: {e}", exc_info=True); await update.message.reply_text("Не вышло пошутить.", reply_markup=markup)
+# --- Обработчики ---
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE): logger.info("Вызвана /start"); user_name = update.effective_user.first_name or "User"; await update.message.reply_text(f'Привет, {user_name}! Пошутим (/joke или кнопка) или узнаем погоду (/weather Город)?', reply_markup=markup)
+async def joke_command(update: Update, context: ContextTypes.DEFAULT_TYPE): logger.info("Вызвана /joke или кнопка"); joke_api_url = "https://official-joke-api.appspot.com/random_joke"; try: async with aiohttp.ClientSession() as s, s.get(joke_api_url) as r: r.raise_for_status(); data=await r.json(); logger.info(f"/joke: Ответ API: {data}"); setup=data.get("setup"); p=data.get("punchline"); await update.message.reply_text(f"{setup}\n\n{p}" if setup and p else "Шутка не пришла :(", reply_markup=markup) except Exception as e: logger.error(f"/joke Ошибка: {e}", exc_info=True); await update.message.reply_text("Не вышло пошутить.", reply_markup=markup)
 async def weather_command_direct(update: Update, context: ContextTypes.DEFAULT_TYPE): logger.info("Вызвана /weather Город"); city = " ".join(context.args) if context.args else None; await fetch_and_send_weather(update, context, city) if city else await update.message.reply_text("Укажите город: /weather Город", reply_markup=markup)
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE): logger.info("Вызвана О боте"); await update.message.reply_text("Бот для шуток и погоды.", reply_markup=markup)
 
-# --- Функции диалога погоды ---
-async def weather_button_entry(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Начинает диалог погоды после нажатия кнопки."""
-    logger.info("Вход в диалог погоды (weather_button_entry)")
-    await update.message.reply_text(
-        "Хорошо! Введите название города, для которого хотите узнать погоду:",
-        reply_markup=ReplyKeyboardRemove() # Убираем основную клавиатуру на время ввода
-    )
-    logger.info("Сообщение 'Введите город' отправлено. Возвращаем состояние GET_CITY.") # <-- Новый лог
-    return GET_CITY # Переходим в состояние ожидания города
-
-async def received_city(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Обрабатывает введенное название города."""
-    # --- !!! НОВЫЙ ЛОГ В НАЧАЛЕ ФУНКЦИИ !!! ---
-    logger.info("Вход в функцию received_city.")
-    # -----------------------------------------
-    city_name = update.message.text
-    user_id = update.effective_user.id
-    logger.info(f"Пользователь {user_id} ввел город: '{city_name}'")
-
-    # --- !!! НОВЫЙ ЛОГ ПЕРЕД ВЫЗОВОМ ПОГОДЫ !!! ---
-    logger.info(f"Вызов fetch_and_send_weather для города '{city_name}'.")
-    # -------------------------------------------
-    # Вызываем общую функцию для получения погоды
-    await fetch_and_send_weather(update, context, city_name)
-
-    # Завершаем диалог
-    logger.info(f"Диалог погоды для пользователя {user_id} завершен.")
-    return ConversationHandler.END # Выход из диалога
-
-async def cancel_conversation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Отменяет текущий диалог."""
-    logger.info("Диалог отменен")
-    await update.message.reply_text('Отменено.', reply_markup=markup)
-    return ConversationHandler.END
-# --- Конец функций для ConversationHandler ---
-
-
 # --- Обработка обновления ---
 async def process_one_update(update_data):
-    # ... (код до регистрации обработчиков без изменений) ...
     if not TELEGRAM_TOKEN: logger.error("Токен не найден!"); return
     application = Application.builder().token(TELEGRAM_TOKEN).build()
-    conv_handler_weather = ConversationHandler(
-        entry_points=[MessageHandler(filters.TEXT & filters.Regex(r'^Погода 🌦️$'), weather_button_entry)],
-        states={
-            GET_CITY: [MessageHandler(filters.TEXT & ~filters.COMMAND, received_city)] # <-- Этот обработчик должен сработать
-        },
-        fallbacks=[CommandHandler('cancel', cancel_conversation)]
-    )
-    application.add_handler(conv_handler_weather)
+
+    # --- !!! УБРАЛИ ConversationHandler, УПРОСТИЛИ РЕГИСТРАЦИЮ !!! ---
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("joke", joke_command))
-    application.add_handler(CommandHandler("weather", weather_command_direct))
+    application.add_handler(CommandHandler("weather", weather_command_direct)) # Обработчик для /weather Город
     application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'^Шутка 🎲$'), joke_command))
     application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'^О боте ℹ️$'), about_command))
-    application.add_handler(CommandHandler('cancel', cancel_conversation))
-    logger.info("Обработчики добавлены.")
+    # --------------------------------------------------------------
 
+    logger.info("Обработчики добавлены (упрощенная версия).")
     try:
-        # ... (остальной код try/except блока без изменений) ...
         logger.debug(f"Инит приложения для {update_data.get('update_id')}")
         await application.initialize()
         update = Update.de_json(update_data, application.bot)
@@ -139,12 +89,10 @@ async def process_one_update(update_data):
         await application.shutdown()
     except Exception as e: logger.error(f"Критическая ошибка {update_data.get('update_id', 'N/A')}: {e}", exc_info=True); await application.shutdown() if application.initialized else None
 
-
 # --- Точка входа Vercel ---
 class handler(BaseHTTPRequestHandler):
-    # ... (log_message, do_POST, do_GET без изменений) ...
     def log_message(self, format, *args): logger.info("%s - %s" % (self.address_string(), format % args))
-    def do_POST(self): logger.info("!!! Вход в do_POST !!!"); # ... (далее как раньше) ...
+    def do_POST(self): logger.info("!!! Вход в do_POST !!!"); # ... (код do_POST без изменений, как в последней рабочей версии) ...
         if not TELEGRAM_TOKEN: logger.error("POST: Токен не найден"); self.send_response(500); self.end_headers(); self.wfile.write(b"Token error"); return
         try:
             content_len = int(self.headers.get('Content-Length', 0)); body_bytes = self.rfile.read(content_len)
