@@ -28,24 +28,21 @@ OWM_API_KEY = os.environ.get('OWM_API_KEY') # Ключ для OpenWeatherMap
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Ответ на команду /start"""
-    # Обновляем приветствие, убирая упоминание echo
     await update.message.reply_text(
         'Привет! Я бот. Могу рассказать шутку по команде /joke, '
         'или показать погоду: /weather Город'
     )
 
-# --- Функция echo УДАЛЕНА ---
-
 async def joke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отправляет случайную шутку"""
     joke_api_url = "https://official-joke-api.appspot.com/random_joke"
-    logger.info(f"Запрос шутки с {joke_api_url}")
+    logger.info(f"Вызвана /joke. Запрос шутки с {joke_api_url}")
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(joke_api_url) as response:
                 response.raise_for_status()
                 data = await response.json()
-                logger.info(f"Получен ответ от API шуток: {data}")
+                logger.info(f"/joke: Получен ответ от API шуток: {data}")
 
         setup = data.get("setup")
         punchline = data.get("punchline")
@@ -54,60 +51,65 @@ async def joke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             joke_text = f"{setup}\n\n{punchline}"
             await update.message.reply_text(joke_text)
         else:
-            logger.error(f"Не удалось извлечь setup/punchline из ответа: {data}")
+            logger.error(f"/joke: Не удалось извлечь setup/punchline из ответа: {data}")
             await update.message.reply_text("Необычный формат шутки пришел. Попробуй еще раз!")
 
     except aiohttp.ClientError as e:
-        logger.error(f"Ошибка сети при запросе шутки: {e}", exc_info=True)
+        logger.error(f"/joke: Ошибка сети при запросе шутки: {e}", exc_info=True)
         await update.message.reply_text("Не смог связаться с сервером шуток. Попробуй позже.")
     except json.JSONDecodeError as e:
-         logger.error(f"Ошибка декодирования JSON от API шуток: {e}", exc_info=True)
+         logger.error(f"/joke: Ошибка декодирования JSON от API шуток: {e}", exc_info=True)
          await update.message.reply_text("Сервер шуток ответил что-то непонятное. Попробуй позже.")
     except Exception as e:
-        logger.error(f"Непредвиденная ошибка при получении шутки: {e}", exc_info=True)
+        logger.error(f"/joke: Непредвиденная ошибка при получении шутки: {e}", exc_info=True)
         await update.message.reply_text("Ой, что-то пошло не так при поиске шутки. Попробуй позже.")
 
 async def weather_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отправляет погоду для указанного города"""
-    logger.info("Вызвана команда /weather")
+    logger.info("Вызвана команда /weather") # Лог вызова команды
 
     if not OWM_API_KEY:
-        logger.error("Ключ OWM_API_KEY не найден в переменных окружения.")
+        logger.error("/weather: Ключ OWM_API_KEY не найден в переменных окружения.")
         await update.message.reply_text("Ключ для сервиса погоды не настроен на сервере.")
         return
 
     if not context.args:
-        logger.info("Команда /weather вызвана без аргументов.")
+        logger.info("/weather: Команда вызвана без аргументов.")
         await update.message.reply_text("Пожалуйста, укажите город после команды: /weather НазваниеГорода")
         return
     city_name = " ".join(context.args)
 
     weather_api_url = f"http://api.openweathermap.org/data/2.5/weather?q={city_name}&appid={OWM_API_KEY}&units=metric&lang=ru"
-    logger.info(f"Запрос погоды для '{city_name}' с {weather_api_url}")
+    logger.info(f"/weather: Запрос погоды для '{city_name}' с {weather_api_url}")
 
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(weather_api_url) as response:
                 if response.status == 401:
-                     logger.error(f"Ошибка 401 от OWM API для города '{city_name}'. Проверьте API ключ.")
+                     logger.error(f"/weather: Ошибка 401 от OWM API для города '{city_name}'. Проверьте API ключ.")
                      await update.message.reply_text("Ошибка авторизации на сервере погоды. Возможно, неверный API ключ.")
                      return
                 if response.status == 404:
-                    logger.warning(f"Город '{city_name}' не найден OWM API (404).")
+                    logger.warning(f"/weather: Город '{city_name}' не найден OWM API (404).")
                     await update.message.reply_text(f"Не могу найти город '{city_name}'. Убедитесь в правильности написания.")
                     return
                 response.raise_for_status() # Проверка на другие ошибки (5xx, 4xx)
 
                 data = await response.json()
-                logger.info(f"Получен ответ от OWM API: {data}")
+                logger.info(f"/weather: Получен ответ от OWM API: {data}")
 
-        main_weather = data.get("weather", [{}])[0].get("description", "Нет данных")
-        temp = data.get("main", {}).get("temp", "Нет данных")
-        feels_like = data.get("main", {}).get("feels_like", "Нет данных")
-        humidity = data.get("main", {}).get("humidity", "Нет данных")
-        wind_speed = data.get("wind", {}).get("speed", "Нет данных")
+        # Извлечение данных (с проверками на случай отсутствия полей)
+        weather_list = data.get("weather", [])
+        main_weather = weather_list[0].get("description", "Нет данных") if weather_list else "Нет данных"
+        main_data = data.get("main", {})
+        temp = main_data.get("temp", "N/A")
+        feels_like = main_data.get("feels_like", "N/A")
+        humidity = main_data.get("humidity", "N/A")
+        wind_data = data.get("wind", {})
+        wind_speed = wind_data.get("speed", "N/A")
         city_display_name = data.get("name", city_name)
 
+        # Формирование текста ответа
         weather_text = (
             f"Погода в городе {city_display_name}:\n"
             f"Описание: {main_weather.capitalize()}\n"
@@ -119,38 +121,42 @@ async def weather_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(weather_text)
 
     except aiohttp.ClientError as e:
-        logger.error(f"Ошибка сети при запросе погоды для '{city_name}': {e}", exc_info=True)
+        logger.error(f"/weather: Ошибка сети при запросе погоды для '{city_name}': {e}", exc_info=True)
         await update.message.reply_text("Не смог связаться с сервером погоды. Попробуй позже.")
     except json.JSONDecodeError as e:
-         logger.error(f"Ошибка декодирования JSON от OWM API для '{city_name}': {e}", exc_info=True)
+         logger.error(f"/weather: Ошибка декодирования JSON от OWM API для '{city_name}': {e}", exc_info=True)
          await update.message.reply_text("Сервер погоды ответил что-то непонятное. Попробуй позже.")
     except Exception as e:
-        logger.error(f"Непредвиденная ошибка при получении погоды для '{city_name}': {e}", exc_info=True)
+        logger.error(f"/weather: Непредвиденная ошибка при получении погоды для '{city_name}': {e}", exc_info=True)
         await update.message.reply_text("Ой, что-то пошло не так при получении погоды. Попробуй позже.")
 
 
 # --- Функция обработки ОДНОГО обновления ---
 async def process_one_update(update_data):
     if not TELEGRAM_TOKEN:
-        logger.error("Токен не найден в переменных окружения!")
+        logger.error("process_one_update: Токен не найден в переменных окружения!")
         return
 
     application = Application.builder().token(TELEGRAM_TOKEN).build()
 
     # --- РЕГИСТРАЦИЯ ОБРАБОТЧИКОВ ---
+    # Убедитесь, что все эти строки присутствуют и не содержат опечаток
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("joke", joke_command))
-    application.add_handler(CommandHandler("weather", weather_command)) # <-- Убеждаемся, что эта строка есть
-    # --- Обработчик echo УДАЛЕН ---
-    # application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+    application.add_handler(CommandHandler("weather", weather_command)) # <--- ВАЖНАЯ СТРОКА
+    # Обработчик echo удален, MessageHandler не добавляем
     # --------------------------------
 
     try:
+        logger.debug(f"process_one_update: Инициализация приложения для update_id {update_data.get('update_id')}")
         await application.initialize()
         update = Update.de_json(update_data, application.bot)
+        logger.debug(f"process_one_update: Запуск process_update для update_id {update.update_id}")
         await application.process_update(update)
+        logger.debug(f"process_one_update: Завершение shutdown для update_id {update.update_id}")
         await application.shutdown()
     except Exception as e:
+        # Логируем ошибку, если она произошла *вне* вызова конкретного обработчика
         logger.error(f"Критическая ошибка при обработке обновления {update_data.get('update_id', 'N/A')}: {e}", exc_info=True)
         if application.initialized:
             try:
@@ -163,6 +169,7 @@ async def process_one_update(update_data):
 class handler(BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
+          # Используем наш настроенный логгер
           logger.info("%s - %s" % (self.address_string(), format%args))
 
     def do_POST(self):
@@ -184,7 +191,9 @@ class handler(BaseHTTPRequestHandler):
             body_bytes = self.rfile.read(content_len)
             body_json = json.loads(body_bytes.decode('utf-8'))
             logger.info("POST-запрос: JSON получен и декодирован.")
+            # Запускаем обработку одного обновления
             asyncio.run(process_one_update(body_json))
+            # Отвечаем Telegram OK
             self.send_response(200)
             self.send_header('Content-type', 'text/plain')
             self.end_headers()
@@ -206,4 +215,5 @@ class handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/plain')
         self.end_headers()
-        self.wfile.write(b"Hello! Telegram Bot webhook endpoint is active.")
+        # Отправляем байты, закодированные в utf-8
+        self.wfile.write(b"Hello! Telegram Bot webhook endpoint is active. Ready for POST requests.")
