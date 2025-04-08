@@ -3,6 +3,8 @@ import os
 import asyncio
 import json
 import logging
+import aiohttp # <-- Добавлен импорт для HTTP-запросов
+
 from http.server import BaseHTTPRequestHandler
 from urllib.parse import parse_qs
 
@@ -20,12 +22,56 @@ logger = logging.getLogger(__name__)
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 
 # --- Обработчики команд и сообщений ---
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text('Привет! Отправь мне сообщение, и я его повторю.')
+    """Ответ на команду /start"""
+    await update.message.reply_text('Привет! Я бот. Могу повторить твое сообщение или рассказать шутку по команде /joke.')
 
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Повторяет сообщение пользователя"""
     user_text = update.message.text
     await update.message.reply_text(f'Вы написали: {user_text}')
+
+# --- НОВАЯ ФУНКЦИЯ ДЛЯ КОМАНДЫ /joke ---
+async def joke_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отправляет случайную шутку"""
+    joke_api_url = "https://official-joke-api.appspot.com/random_joke"
+    logger.info(f"Запрос шутки с {joke_api_url}")
+    try:
+        # Используем aiohttp для асинхронного запроса
+        async with aiohttp.ClientSession() as session:
+            async with session.get(joke_api_url) as response:
+                # Проверяем статус ответа, если не 200 OK, вызовет ошибку
+                response.raise_for_status()
+                # Получаем данные в формате JSON
+                data = await response.json()
+                logger.info(f"Получен ответ от API шуток: {data}")
+
+        # Извлекаем части шутки
+        setup = data.get("setup")
+        punchline = data.get("punchline")
+
+        if setup and punchline:
+            # Формируем сообщение
+            joke_text = f"{setup}\n\n{punchline}"
+            await update.message.reply_text(joke_text)
+        else:
+            logger.error(f"Не удалось извлечь setup/punchline из ответа: {data}")
+            await update.message.reply_text("Необычный формат шутки пришел. Попробуй еще раз!")
+
+    # Обработка возможных ошибок при запросе к API
+    except aiohttp.ClientError as e:
+        logger.error(f"Ошибка сети при запросе шутки: {e}", exc_info=True)
+        await update.message.reply_text("Не смог связаться с сервером шуток. Попробуй позже.")
+    except json.JSONDecodeError as e:
+         logger.error(f"Ошибка декодирования JSON от API шуток: {e}", exc_info=True)
+         await update.message.reply_text("Сервер шуток ответил что-то непонятное. Попробуй позже.")
+    except Exception as e:
+        # Ловим любые другие непредвиденные ошибки
+        logger.error(f"Непредвиденная ошибка при получении шутки: {e}", exc_info=True)
+        await update.message.reply_text("Ой, что-то пошло не так при поиске шутки. Попробуй позже.")
+# --- КОНЕЦ НОВОЙ ФУНКЦИИ ---
+
 
 # --- Функция обработки ОДНОГО обновления ---
 async def process_one_update(update_data):
@@ -35,21 +81,20 @@ async def process_one_update(update_data):
 
     application = Application.builder().token(TELEGRAM_TOKEN).build()
 
-    # Добавляем обработчики
+    # --- !!! ДОБАВЛЕН ОБРАБОТЧИК ДЛЯ /joke !!! ---
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("joke", joke_command)) # <-- Добавили эту строку
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
+    # --------------------------------------------
 
     try:
-        # --- !!! ВАЖНЫЕ ИЗМЕНЕНИЯ ЗДЕСЬ !!! ---
-        await application.initialize() # Инициализируем приложение
+        await application.initialize()
         update = Update.de_json(update_data, application.bot)
-        await application.process_update(update) # Обрабатываем обновление (ждем завершения)
-        await application.shutdown() # Корректно завершаем работу приложения
-        # -------------------------------------
+        await application.process_update(update)
+        await application.shutdown()
         logger.info(f"Успешно обработано обновление {update.update_id}")
     except Exception as e:
         logger.error(f"Ошибка при обработке обновления {update_data.get('update_id', 'N/A')}: {e}", exc_info=True)
-        # Попытаемся завершить приложение даже при ошибке, если оно было инициализировано
         if application.initialized:
             try:
                 await application.shutdown()
@@ -86,12 +131,8 @@ class handler(BaseHTTPRequestHandler):
             body_json = json.loads(body_bytes.decode('utf-8'))
             logger.info("POST-запрос: JSON получен и декодирован.")
 
-            # Запускаем обработку одного обновления
-            # asyncio.run подходит для вызова async функции из sync контекста
-            asyncio.run(process_one_update(body_json)) # Используем новую функцию
+            asyncio.run(process_one_update(body_json))
 
-            # Отвечаем Telegram OK *после* попытки обработки
-            # (В serverless это обычно нормально, функция не будет работать слишком долго)
             self.send_response(200)
             self.send_header('Content-type', 'text/plain')
             self.end_headers()
