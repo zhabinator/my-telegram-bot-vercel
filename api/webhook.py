@@ -204,8 +204,10 @@ async def process_one_update(update_data):
     logger.debug("Добавление CommandHandler(weather)...")
     application.add_handler(CommandHandler("weather", weather_command_direct))
     logger.debug("Добавление MessageHandler(Шутка)...")
+    # --- ВАЖНО: Убедитесь, что текст ниже ТОЧНО совпадает с текстом из ЛОГОВ Vercel ---
     application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'^Шутка 🎲$'), joke_command))
     logger.debug("Добавление MessageHandler(О боте)...")
+    # --- ВАЖНО: Убедитесь, что текст ниже ТОЧНО совпадает с текстом из ЛОГОВ Vercel ---
     application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'^О боте ℹ️$'), about_command))
 
     # --- Обработчик кнопки "Погода" теперь не будет работать, т.к. он вел в отключенный ConversationHandler ---
