@@ -46,9 +46,9 @@ congratulations_list = [
 # --- ВАШ СПИСОК URL-АДРЕСОВ КАРТИНОК ---
 # ЗАМЕНИТЕ ЭТИ ССЫЛКИ НА СВОИ РЕАЛЬНЫЕ ПРЯМЫЕ ССЫЛКИ НА КАРТИНКИ!
 image_urls = [
-    "https://i.imgur.com/SrFv5sw.jpeg", # Пример прямой ссылки Imgur
-    "https://i.imgur.com/oXAIpza.jpeg", # Пример 2
-    "https://i.imgur.com/5uHqtKz.jpeg", # Пример 3
+    "https://i.imgur.com/P14dISY.jpeg", # Пример прямой ссылки Imgur
+    "https://i.imgur.com/SrFv5sw.jpeg", # Пример 2
+    "https://i.imgur.com/SrFv5sw.jpeg", # Пример 3
     # Добавьте сюда больше ваших прямых ссылок
 ]
 if not image_urls or image_urls[0].startswith("https://example.com"):
