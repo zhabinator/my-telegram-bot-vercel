@@ -49,9 +49,13 @@ congratulations_list = [
 
 # --- Список URL картинок ---
 image_urls = [
-    "https://i.imgur.com/P14dISY.jpeg", "https://i.imgur.com/SrFv5sw.jpeg", "https://i.imgur.com/UjL4C4Q.jpeg",
-    "https://i.imgur.com/exIooZ0.jpeg", "https://i.imgur.com/Hqe3MOI.jpeg", "https://i.imgur.com/xEsRHUU.jpeg"
-]
+   "https://i.imgur.com/P14dISY.jpeg",
+    "https://i.imgur.com/SrFv5sw.jpeg",
+    "https://i.imgur.com/UjL4C4Q.jpeg",
+    "https://i.imgur.com/exIooZ0.jpeg",
+    "https://i.imgur.com/Hqe3MOI.jpeg",
+    "https://i.imgur.com/xEsRHUU.jpeg"
+    ]
 if not image_urls: logger.warning("Список image_urls пуст!")
 
 # --- ID Аудиофайла ---
