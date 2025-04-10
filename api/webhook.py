@@ -3,11 +3,12 @@ import os
 import asyncio
 import json
 import logging
-from typing import List
+import random # Оставляем для случайного выбора
 
-# --- Импорт KV ---
-from vercel_kv import KV # Клиент для Vercel KV (Используем большую 'KV')
-# ------------------
+# --- УБРАЛИ ИМПОРТЫ KV ---
+# from typing import List
+# from vercel_kv import KV
+# --------------------------
 
 from http.server import BaseHTTPRequestHandler
 
@@ -26,7 +27,7 @@ logging.basicConfig(
     level=logging.INFO # INFO для продакшена
 )
 logger = logging.getLogger(__name__)
-logging.getLogger("vercel_kv").setLevel(logging.INFO) # Логи KV оставляем INFO
+# logging.getLogger("vercel_kv").setLevel(logging.INFO) # Больше не нужно
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # --- Ключ Telegram ---
@@ -34,28 +35,23 @@ TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 if not TELEGRAM_TOKEN:
     logger.critical("Переменная окружения TELEGRAM_TOKEN не установлена!")
 
-# --- СОЗДАЕМ ЭКЗЕМПЛЯР KV КЛИЕНТА ---
-kv_client = KV() # Создаем объект один раз
-# ------------------------------------
+# --- УБРАЛИ ЭКЗЕМПЛЯР KV ---
+# kv_client = KV()
+# ---------------------------
 
 # --- Список поздравлений ---
-congratulations_list: List[str] = [
+congratulations_list = [
     "Будть всегда very sugar🎉", "Ты - ловушка для мужского Вау! 💖", "Главная статья в кодексе красоты 🥳",
     "Ты делаешь аппетит приятнее ✨", "Ароматного дня, миледи🥰", "Рядом с вами не хочется моргать🥰",
     "Если красота спасет мир, то вся надежда только на тебя!🥰", "Целуем тот день, когда ты родилась!💖",
     "Море удачи и дачи у моря! 💖",
 ]
 
-# --- ВАШ СПИСОК URL КАРТИНОК ---
-image_urls: List[str] = [
-    "https://i.imgur.com/P14dISY.jpeg",
-    "https://i.imgur.com/SrFv5sw.jpeg",
-    "https://i.imgur.com/UjL4C4Q.jpeg",
-    "https://i.imgur.com/exIooZ0.jpeg",
-    "https://i.imgur.com/Hqe3MOI.jpeg",
-    "https://i.imgur.com/xEsRHUU.jpeg"
+# --- Список URL картинок ---
+image_urls = [
+    "https://i.imgur.com/P14dISY.jpeg", "https://i.imgur.com/SrFv5sw.jpeg", "https://i.imgur.com/UjL4C4Q.jpeg",
+    "https://i.imgur.com/exIooZ0.jpeg", "https://i.imgur.com/Hqe3MOI.jpeg", "https://i.imgur.com/xEsRHUU.jpeg"
 ]
-# -------------------------------------------
 if not image_urls: logger.warning("Список image_urls пуст!")
 
 # --- ID Аудиофайла ---
@@ -68,62 +64,9 @@ reply_keyboard = [
 ]
 markup = ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True, one_time_keyboard=False)
 
-# --- Вспомогательная функция для получения следующего элемента из списка через KV ---
-async def get_next_item(user_id: int, list_key: str, item_list: List[str]) -> str:
-    # Отступ 4 пробела
-    if not item_list: logger.warning(f"Список для ключа '{list_key}' пуст."); return "Список пуст."
-
-    # Отступ 4 пробела
-    kv_key = f"next_idx:{user_id}:{list_key}"
-    logger.debug(f"KV ключ: {kv_key}")
-    current_index: int = 0
-    # Устанавливаем значение по умолчанию перед блоком try
-    item_to_return: str = item_list[0] if item_list else "Список пуст." # Безопасное значение по умолчанию
-
-    # Отступ 4 пробела
-    try:
-        # Отступ 8 пробелов
-        logger.debug(f"KV Чтение: {kv_key}...")
-        # Используем ЭКЗЕМПЛЯР kv_client
-        stored_value = await kv_client.get(kv_key)
-        logger.debug(f"KV Прочитано: {kv_key} = {stored_value} (тип: {type(stored_value)})")
-
-        # Отступ 8 пробелов
-        if isinstance(stored_value, int): current_index = stored_value
-        elif isinstance(stored_value, str) and stored_value.isdigit(): current_index = int(stored_value)
-        else: logger.info(f"KV Индекс не найден/не число для {kv_key}, начинаем с 0."); current_index = 0
-
-        # Отступ 8 пробелов - проверка на выход за пределы
-        if not (0 <= current_index < len(item_list)):
-            logger.warning(f"KV Индекс {current_index} вне диапазона [0..{len(item_list)-1}] для {kv_key}. Сброс на 0.")
-            current_index = 0
-
-        # Отступ 8 пробелов
-        item_to_return = item_list[current_index] # Получаем элемент по корректному индексу
-        logger.info(f"KV Выбран индекс {current_index} для {kv_key}.")
-
-    # Отступ 4 пробела
-    except Exception as e:
-        # Отступ 8 пробелов
-        logger.error(f"KV Ошибка чтения {kv_key}: {e}", exc_info=True)
-        current_index = 0 # В случае ошибки начинаем с 0
-        item_to_return = item_list[0] # И отправляем первый элемент
-
-    # Отступ 4 пробела - вычисляем и сохраняем СЛЕДУЮЩИЙ индекс
-    next_index = (current_index + 1) % len(item_list)
-    try:
-        # Отступ 8 пробелов
-        logger.debug(f"KV Запись: {kv_key} = {next_index}...")
-        # Используем ЭКЗЕМПЛЯР kv_client
-        await kv_client.set(kv_key, next_index)
-        logger.info(f"KV Сохранен след. индекс {next_index} для {kv_key}")
-    # Отступ 4 пробела
-    except Exception as e:
-        # Отступ 8 пробелов
-        logger.error(f"KV Ошибка записи {kv_key}: {e}", exc_info=True)
-
-    # Отступ 4 пробела
-    return item_to_return # Возвращаем элемент ТЕКУЩЕГО индекса
+# --- УБРАЛИ ВСПОМОГАТЕЛЬНУЮ ФУНКЦИЮ get_next_item ---
+# async def get_next_item(...): ...
+# --------------------------------------------------
 
 
 # --- Обработчики ---
@@ -139,15 +82,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def syrup_heart_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отправляет СЛЕДУЮЩЕЕ 'сиропное' сообщение по порядку."""
+    """Отправляет СЛУЧАЙНОЕ 'сиропное' сообщение."""
     # Отступ 4 пробела
     user_id = update.effective_user.id
     logger.info(f"Нажата кнопка 'Полить сердечко сиропом' от user_id: {user_id}")
     try:
         # Отступ 8 пробелов
-        message = await get_next_item(user_id, "syrup", congratulations_list)
+        if not congratulations_list: # Проверка на пустой список
+             logger.warning("Список congratulations_list пуст!")
+             await update.message.reply_text("Извини, поздравления закончились.", reply_markup=markup)
+             return
+
+        # --- ИЗМЕНЕНО: Используем random.choice ---
+        message = random.choice(congratulations_list)
+        # ------------------------------------------
         await update.message.reply_text(message, reply_markup=markup)
-        logger.info(f"Отправлено 'сиропное' сообщение для user_id: {user_id}")
+        logger.info(f"Отправлено случайное 'сиропное' сообщение для user_id: {user_id}")
     # Отступ 4 пробела
     except Exception as e:
         # Отступ 8 пробелов
@@ -156,7 +106,7 @@ async def syrup_heart_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         except Exception as send_err: logger.error(f"Не удалось отправить сообщение об ошибке: {send_err}")
 
 async def beauty_image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Отправляет СЛЕДУЮЩУЮ картинку из списка по порядку."""
+    """Отправляет СЛУЧАЙНУЮ картинку из списка."""
     # Отступ 4 пробела
     user_id = update.effective_user.id
     logger.info(f"Нажата кнопка 'Сделай красиво' от user_id: {user_id}")
@@ -171,8 +121,10 @@ async def beauty_image_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     # Отступ 4 пробела
     try:
         # Отступ 8 пробелов
-        image_url = await get_next_item(user_id, "beauty_img", image_urls)
-        logger.info(f"Выбран URL картинки: {image_url} для user_id: {user_id}")
+        # --- ИЗМЕНЕНО: Используем random.choice ---
+        image_url = random.choice(image_urls)
+        # ------------------------------------------
+        logger.info(f"Выбран случайный URL картинки: {image_url} для user_id: {user_id}")
 
         # Отступ 8 пробелов
         await update.message.reply_photo(
@@ -180,7 +132,7 @@ async def beauty_image_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             caption="Лови красоту! ✨",
             reply_markup=markup
             )
-        logger.info(f"Картинка успешно отправлена для user_id: {user_id}")
+        logger.info(f"Случайная картинка успешно отправлена для user_id: {user_id}")
 
     # Отступ 4 пробела
     except Exception as e:
@@ -231,7 +183,7 @@ async def process_one_update(update_data):
     application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'^Хеппи бездей 🎂$'), happy_birthday_handler))
 
     # Отступ 4 пробела
-    logger.info("Обработчики (start, syrup, beauty, hb) добавлены.")
+    logger.info("Обработчики (start, syrup(random), beauty(random), hb) добавлены.")
     try:
         # Отступ 8 пробелов
         logger.debug(f"Инициализация приложения для update_id: {update_data.get('update_id')}")
@@ -287,5 +239,5 @@ class handler(BaseHTTPRequestHandler):
     def do_GET(self): # ... (стандартный код do_GET) ...
         logger.info("GET /api/webhook")
         self.send_response(200); self.send_header('Content-type', 'text/plain'); self.end_headers()
-        self.wfile.write(b"Bot OK (Sequential + HB Audio Version)")
+        self.wfile.write(b"Bot OK (Random Syrup/Image + HB Audio Version)") # Обновили текст
         return
