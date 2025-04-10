@@ -51,7 +51,6 @@ congratulations_list = [
 image_urls = [
    "https://i.imgur.com/P14dISY.jpeg",
     "https://i.imgur.com/SrFv5sw.jpeg",
-    "https://i.imgur.com/UjL4C4Q.jpeg",
     "https://i.imgur.com/exIooZ0.jpeg",
     "https://i.imgur.com/Hqe3MOI.jpeg",
     "https://i.imgur.com/xEsRHUU.jpeg"
