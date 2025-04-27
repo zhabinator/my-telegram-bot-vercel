@@ -10,7 +10,38 @@ import random # Оставляем для случайного выбора
 from http.server import BaseHTTPRequestHandler
 
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
+from telegram.ностью замените** содержимое файла `api/webhook.py` на этот код:
+
+```python
+# -*- coding: utf-8 -*-
+import os
+import asyncio
+import json
+import logging
+import random # Оставляем для случайного выбора
+
+# --- Убрали импорты KV ---
+
+from http.server import BaseHTTPRequestHandler
+
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    filters,
+    ContextTypes
+)
+
+# --- Настройка логирования ---
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO # INFO для продакшена
+)
+logger = logging.getLogger(__name__)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
+# --- Ключ Telegram ---ext import (
     Application,
     CommandHandler,
     MessageHandler,
@@ -46,10 +77,73 @@ image_urls = [
 ]
 if not image_urls: logger.warning("Список image_urls пуст!")
 
-# --- ID Вашего Аудиофайла ---
-# Убедитесь, что этот ID действителен для вашего бота!
-HAPPY_BIRTHDAY_AUDIO_ID = "CQACAgIAAxkBAAEd2Z9n99j8nLv08edj8YC2UjLcN_AlNQAC1nEAAm2gwEuxk0AF1ieRlDYE"
-# ----------------------------
+# --- ID Вашего НОВОГО Аудиофайла ---
+HAPPY_BIRTHDAY_AUDIO_ID = "CQACAgIAAxkBAAEeFGVoDgLIaXacb0EQl_xL-
+TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
+if not TELEGRAM_TOKEN:
+    logger.critical("Переменная окружения TELEGRAM_TOKEN не установлена!")
+
+# --- Список поздравлений ---
+congratulations_list = [
+    "Будть всегда very sugar🎉", "Ты - ловушка для мужского Вау! 💖", "Главная статья в кодексе красоты 🥳",
+    "Ты делаешь аппетит приятнее ✨", "Ароматного дня, миледи🥰", "Рядом с вами не хочется моргать🥰",
+    "Если красота спасет мир, то вся надежда только на тебя!🥰", "Целуем тот день, когда ты родилась!💖",
+    "Море удачи и дачи у моря! 💖",
+]
+
+# --- Список URL картинок ---
+image_urls = [
+    "https://i.imgur.com/P14dISY.jpeg", "https://i.imgur.com/SrFv5sw.jpeg", "https://i.imgur.com/UjL4C4Q.jpeg",
+    "https://i.imgur.com/exIooZ0.jpeg", "https://i.imgur.com/Hqe3MOI.jpeg", "https://i.imgur.com/xEsRHUU.jpeg"
+]
+if not image_urls: logger.warning("Список image_urls пуст!")
+
+# --- ID Вашего НОВОГО Аудиофайла ---
+HAPPY_BIRTHDAY_AUDIO_ID = "CQACAgIAAxkBAAEeFGVoDgLIaXacb0EQl_xL-M7bDs5ENwACwnAAAp1ncEhC4mDMqXl-wjYE" # <-- ВАШ НОВЫЙ ID
+# ---------------------------------
+
+# --- Клавиатура ---
+reply_keyboard = [
+    [KeyboardButton("Полить сердечко сиропом ❤️"), KeyboardButton("Сделай красиво ✨")],
+    [KeyboardButton("Хеппи бездей 🎂")]
+]
+markup = ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True, one_time_keyboard=False)
+
+# --- Обработчики ---
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отправляет приветствие и показывает клавиатуру."""
+    logger.info(f"Команда /start от user_id: {update.effective_user.id}")
+    user = update.effective_user
+    await update.message.reply_text(
+        f"Привет, {user.mention_html()}! Выбирай!",
+        parse_mode='HTML',
+        reply_markup=markup
+    )
+
+async def syrup_heart_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отправляет СЛУЧАЙНОЕ 'сиропное' сообщение."""
+    user_id = update.effective_user.id
+    logger.info(f"Нажата кнопка 'Полить сердечко сиропом' от user_id: {user_id}")
+    try:
+        if not congratulations_list:
+             logger.warning("Список congratulations_list пуст!")
+             await update.message.reply_text("Извини, поздравления закончились.", reply_markup=markup)
+             return
+        message = random.choice(congratulations_list)
+        await update.message.reply_text(message, reply_markup=markup)
+        logger.info(f"Отправлено случайное 'сиропное' сообщение для user_id: {user_id}")
+    except Exception as e:
+        logger.error(f"Ошибка в syrup_heart_handler для user_id: {user_id}: {e}", exc_info=True)
+        try: await update.message.reply_text("Ой, не получилось полить сиропом!", reply_markup=markup)
+        except Exception as send_err: logger.error(f"Не удалось отправить сообщение об ошибке: {send_err}")
+
+async def beauty_image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отправляет СЛУЧАЙНУЮ картинку из списка."""
+    user_id = update.effective_user.id
+    logger.info(f"Нажата кнопка 'Сделай красиво' от user_id: {user_id}")
+    if not image_urls:
+        logger.error(f"Список image_M7bDs5ENwACwnAAAp1ncEhC4mDMqXl-wjYE" # <-- ВСТАВЛЕН НОВЫЙ ID
+# ------------------------------------
 
 # --- Клавиатура ---
 reply_keyboard = [
@@ -96,6 +190,11 @@ async def beauty_image_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     try:
         image_url = random.choice(image_urls)
+        urls пуст для user_id: {user_id}")
+        await update.message.reply_text("Извините, красивые картинки сейчас не загружены.", reply_markup=markup)
+        return
+    try:
+        image_url = random.choice(image_urls)
         logger.info(f"Выбран случайный URL картинки: {image_url} для user_id: {user_id}")
         await update.message.reply_photo(
             photo=image_url, caption="Лови красоту! ✨", reply_markup=markup
@@ -115,18 +214,13 @@ async def happy_birthday_handler(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("Извини, файл поздравления сейчас недоступен.", reply_markup=markup)
         return
     try:
-        logger.info(f"Отправка аудио с file_id: {HAPPY_BIRTHDAY_AUDIO_ID} для user_id: {user_id}")
+        logger.info(f"Отправка аудио с НОВЫМ file_id: {HAPPY_BIRTHDAY_AUDIO_ID} для user_id: {user_id}") # Логгируем новый ID
         await update.message.reply_audio(audio=HAPPY_BIRTHDAY_AUDIO_ID, caption="С Днем Рождения! 🎉", reply_markup=markup)
         logger.info(f"Аудио 'Хеппи бездей' успешно отправлено user_id: {user_id}")
     except Exception as e:
-        # --- ВАЖНО: Логгируем ошибку ПЕРЕД отправкой сообщения пользователю ---
         logger.error(f"Ошибка при отправке аудио 'Хеппи бездей' для user_id: {user_id}: {e}", exc_info=True)
-        # -----------------------------------------------------------------
-        try:
-            # Отправляем сообщение об ошибке, если отправка аудио не удалась
-            await update.message.reply_text("Не получилось отправить поздравление. Попробуй еще раз!", reply_markup=markup)
-        except Exception as send_err:
-            logger.error(f"Не удалось отправить сообщение об ошибке отправки аудио HB: {send_err}")
+        try: await update.message.reply_text("Не получилось отправить поздравление. Попробуй еще раз!", reply_markup=markup)
+        except Exception as send_err: logger.error(f"Не удалось отправить сообщение об ошибке отправки аудио HB: {send_err}")
 
 
 # --- Обработка обновления ---
