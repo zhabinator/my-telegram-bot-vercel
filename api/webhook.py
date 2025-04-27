@@ -3,7 +3,9 @@ import os
 import asyncio
 import json
 import logging
-import random
+import random # Оставляем для случайного выбора
+
+# --- Убрали импорты KV ---
 
 from http.server import BaseHTTPRequestHandler
 
@@ -19,7 +21,7 @@ from telegram.ext import (
 # --- Настройка логирования ---
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO # INFO достаточно, т.к. используем CRITICAL для ID
+    level=logging.INFO # INFO для продакшена
 )
 logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
@@ -44,8 +46,9 @@ image_urls = [
 ]
 if not image_urls: logger.warning("Список image_urls пуст!")
 
-# --- ID Аудиофайла (Пока оставляем старый, вы его замените новым позже) ---
-HAPPY_BIRTHDAY_AUDIO_ID = "CQACAgIAAxkBAAEeFGVoDgLIaXacb0EQl_xL-M7bDs5ENwACwnAAAp1ncEhC4mDMqXl-wjYE" # ЗАМЕНИТЕ ЭТО ПОЗЖЕ
+# --- ID Вашего НОВОГО и КОРРЕКТНОГО Аудиофайла ---
+HAPPY_BIRTHDAY_AUDIO_ID = "CQACAgIAAxkBAAIFJWgOCKLTuqJWA5opblEK9zH7TlkyAALCcAACnWdwSImu0o35SVIfNgQ" # <-- ВАШ НОВЫЙ ID
+# --------------------------------------------------
 
 # --- Клавиатура ---
 reply_keyboard = [
@@ -111,7 +114,7 @@ async def happy_birthday_handler(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("Извини, файл поздравления сейчас недоступен.", reply_markup=markup)
         return
     try:
-        logger.info(f"Отправка аудио с file_id: {HAPPY_BIRTHDAY_AUDIO_ID} для user_id: {user_id}")
+        logger.info(f"Отправка аудио с КОРРЕКТНЫМ file_id: {HAPPY_BIRTHDAY_AUDIO_ID} для user_id: {user_id}")
         await update.message.reply_audio(audio=HAPPY_BIRTHDAY_AUDIO_ID, caption="С Днем Рождения! 🎉", reply_markup=markup)
         logger.info(f"Аудио 'Хеппи бездей' успешно отправлено user_id: {user_id}")
     except Exception as e:
@@ -119,37 +122,22 @@ async def happy_birthday_handler(update: Update, context: ContextTypes.DEFAULT_T
         try: await update.message.reply_text("Не получилось отправить поздравление. Попробуй еще раз!", reply_markup=markup)
         except Exception as send_err: logger.error(f"Не удалось отправить сообщение об ошибке отправки аудио HB: {send_err}")
 
-# !!! ВРЕМЕННАЯ ФУНКЦИЯ ДЛЯ ЛОГГИРОВАНИЯ ID АУДИО !!!
-async def log_received_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Логгирует file_id полученного аудио и отвечает пользователю."""
-    if update.message and update.message.audio:
-        audio = update.message.audio
-        the_file_id = audio.file_id
-        # Выводим в лог КРИТИЧЕСКИМ уровнем, чтобы точно заметить
-        logger.critical(f"--- !!! ПОЛУЧЕН AUDIO FILE ID: {the_file_id} !!! ---")
-        # Отвечаем пользователю, чтобы было видно и в чате
-        await update.message.reply_text(f"Audio ID получен:\n\n`{the_file_id}`\n\nСкопируйте этот ID.", parse_mode='MarkdownV2')
-    else:
-        logger.warning("log_received_audio вызван для сообщения без аудио.")
-# !!! КОНЕЦ ВРЕМЕННОЙ ФУНКЦИИ !!!
-
+# --- УДАЛЕНА ВРЕМЕННАЯ ФУНКЦИЯ log_received_audio ---
 
 # --- Обработка обновления ---
 async def process_one_update(update_data):
     if not TELEGRAM_TOKEN: logger.error("Нет токена!"); return
     application = Application.builder().token(TELEGRAM_TOKEN).build()
 
-    # !!! ДОБАВЛЯЕМ ВРЕМЕННЫЙ ОБРАБОТЧИК АУДИО ПЕРВЫМ !!!
-    application.add_handler(MessageHandler(filters.AUDIO, log_received_audio))
-    # ---------------------------------------------
+    # --- УДАЛЕН ВРЕМЕННЫЙ ОБРАБОТЧИК АУДИО ---
 
-    # Добавляем остальные обработчики
+    # Добавляем основные обработчики
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'^Полить сердечко сиропом ❤️$'), syrup_heart_handler))
     application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'^Сделай красиво ✨$'), beauty_image_handler))
     application.add_handler(MessageHandler(filters.TEXT & filters.Regex(r'^Хеппи бездей 🎂$'), happy_birthday_handler))
 
-    logger.info("Обработчики добавлены (ВКЛЮЧАЯ ЛОГ АУДИО).")
+    logger.info("Обработчики (start, syrup(random), beauty(random), hb) добавлены.")
     try:
         logger.debug("Init app...")
         await application.initialize()
@@ -183,4 +171,4 @@ class handler(BaseHTTPRequestHandler):
     def do_GET(self): # ... (стандартный код do_GET) ...
         logger.info("GET /api/webhook")
         self.send_response(200); self.send_header('Content-type', 'text/plain'); self.end_headers()
-        self.wfile.write(b"Bot OK (Audio ID Logging Active)"); return # Поменяли текст для GET
+        self.wfile.write(b"Bot OK (Random Syrup/Image + HB Audio Version)"); return
